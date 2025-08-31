@@ -22,7 +22,7 @@ export async function generateImageWithPrompt(request: ImageGenerationRequest): 
     // Use the image generation model directly with both the original image and prompt
     // This allows the model to edit/transform the uploaded image according to the prompt
     const imageGenResponse = await ai.models.generateContent({
-      model: "gemini-2.0-flash-preview-image-generation",
+      model: "gemini-2.5-flash-image-preview",
       contents: [{ 
         role: "user", 
         parts: [
