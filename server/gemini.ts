@@ -2,7 +2,7 @@ import * as fs from "fs";
 import { GoogleGenAI, Modality } from "@google/genai";
 
 const ai = new GoogleGenAI({ 
-  apiKey: process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "AIzaSyC44ENeAHy3nABYPajpzrhBolCt4Uq9i9U"
+  apiKey: process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || ""
 });
 
 export interface ImageGenerationRequest {
