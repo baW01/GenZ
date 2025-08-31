@@ -19,8 +19,8 @@ export interface ImageGenerationResponse {
 
 export async function generateImageWithPrompt(request: ImageGenerationRequest): Promise<ImageGenerationResponse> {
   try {
-    // First, analyze the uploaded image to understand its content
-    const analysisResponse = await ai.models.generateContent({
+    // For image editing/modification, we use the flash model with image input
+    const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
         {
@@ -32,44 +32,59 @@ export async function generateImageWithPrompt(request: ImageGenerationRequest): 
               },
             },
             {
-              text: `Analyze this image and then create a detailed prompt for generating a new image based on this description: ${request.prompt}. Include key visual elements from the original image that should be maintained or transformed.`,
+              text: `Transform this image based on the following description: ${request.prompt}. Please describe in detail how this image should be modified or transformed.`,
             },
           ],
         },
       ],
     });
 
-    // Use the enhanced prompt for image generation
-    const enhancedPrompt = analysisResponse.text || request.prompt;
+    // Since gemini-2.5-flash doesn't generate images directly, we'll use the image generation model
+    // with the description from the first response
+    const description = response.text || request.prompt;
     
-    // Generate image using Imagen 4.0 (latest and best quality)
-    const imageGenResponse = await ai.models.generateImages({
-      model: "imagen-4.0-generate-001",
-      prompt: enhancedPrompt,
+    const imageGenResponse = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image-preview",
+      contents: [{ 
+        role: "user", 
+        parts: [{ 
+          text: `Create an image based on this description: ${description}. Make it high quality and detailed.` 
+        }] 
+      }],
       config: {
-        numberOfImages: 1,
-        aspectRatio: "1:1",
+        responseModalities: [Modality.TEXT, Modality.IMAGE],
       },
     });
 
-    if (!imageGenResponse.generatedImages || imageGenResponse.generatedImages.length === 0) {
+    const candidates = imageGenResponse.candidates;
+    if (!candidates || candidates.length === 0) {
       return {
         success: false,
         error: "No image generated from the model",
       };
     }
 
-    const generatedImage = imageGenResponse.generatedImages[0];
-    if (!generatedImage.image || !generatedImage.image.imageBytes) {
+    const content = candidates[0].content;
+    if (!content || !content.parts) {
       return {
         success: false,
-        error: "No image data found in response",
+        error: "Invalid response format",
       };
     }
 
+    // Look for image data in the response
+    for (const part of content.parts) {
+      if (part.inlineData && part.inlineData.data) {
+        return {
+          success: true,
+          imageData: part.inlineData.data,
+        };
+      }
+    }
+
     return {
-      success: true,
-      imageData: generatedImage.image.imageBytes,
+      success: false,
+      error: "No image data found in response",
     };
   } catch (error) {
     console.error("Gemini API error:", error);
