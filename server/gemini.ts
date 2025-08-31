@@ -19,27 +19,18 @@ export interface ImageGenerationResponse {
 
 export async function generateImageWithPrompt(request: ImageGenerationRequest): Promise<ImageGenerationResponse> {
   try {
-    // Use the image generation model directly with both the original image and prompt
-    // This allows the model to edit/transform the uploaded image according to the prompt
+    // Use the image generation model for editing - pass prompt and image as array
     const imageGenResponse = await ai.models.generateContent({
       model: "gemini-2.5-flash-image-preview",
-      contents: [{ 
-        role: "user", 
-        parts: [
-          {
-            inlineData: {
-              data: request.imageData,
-              mimeType: request.mimeType,
-            },
+      contents: [
+        { text: `Edit and transform this image according to the following instructions: ${request.prompt}. Keep the overall composition and structure but apply the requested changes.` },
+        {
+          inlineData: {
+            mimeType: request.mimeType,
+            data: request.imageData,
           },
-          { 
-            text: `Edit and transform this image according to the following instructions: ${request.prompt}. Keep the overall composition and structure but apply the requested changes.` 
-          }
-        ] 
-      }],
-      config: {
-        responseModalities: [Modality.TEXT, Modality.IMAGE],
-      },
+        },
+      ],
     });
 
     const candidates = imageGenResponse.candidates;
