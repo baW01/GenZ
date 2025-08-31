@@ -19,37 +19,23 @@ export interface ImageGenerationResponse {
 
 export async function generateImageWithPrompt(request: ImageGenerationRequest): Promise<ImageGenerationResponse> {
   try {
-    // For image editing/modification, we use the flash model with image input
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          parts: [
-            {
-              inlineData: {
-                data: request.imageData,
-                mimeType: request.mimeType,
-              },
-            },
-            {
-              text: `Transform this image based on the following description: ${request.prompt}. Please describe in detail how this image should be modified or transformed.`,
-            },
-          ],
-        },
-      ],
-    });
-
-    // Since gemini-2.5-flash doesn't generate images directly, we'll use the image generation model
-    // with the description from the first response
-    const description = response.text || request.prompt;
-    
+    // Use the image generation model directly with both the original image and prompt
+    // This allows the model to edit/transform the uploaded image according to the prompt
     const imageGenResponse = await ai.models.generateContent({
-      model: "gemini-2.5-flash-image-preview",
+      model: "gemini-2.0-flash-preview-image-generation",
       contents: [{ 
         role: "user", 
-        parts: [{ 
-          text: `Create an image based on this description: ${description}. Make it high quality and detailed.` 
-        }] 
+        parts: [
+          {
+            inlineData: {
+              data: request.imageData,
+              mimeType: request.mimeType,
+            },
+          },
+          { 
+            text: `Edit and transform this image according to the following instructions: ${request.prompt}. Keep the overall composition and structure but apply the requested changes.` 
+          }
+        ] 
       }],
       config: {
         responseModalities: [Modality.TEXT, Modality.IMAGE],
