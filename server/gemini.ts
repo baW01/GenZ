@@ -1,29 +1,92 @@
-import * as fs from "fs";
+// gemini.ts
 import { GoogleGenAI, Modality } from "@google/genai";
 
-const ai = new GoogleGenAI({ 
-  apiKey: process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || ""
+const ai = new GoogleGenAI({
+  apiKey: process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "",
 });
 
 export interface ImageGenerationRequest {
-  imageData: string; // base64 encoded image
-  mimeType: string;
+  imageData: string; // base64 (może być też data URL)
+  mimeType: string;  // np. "image/png", "image/jpeg"
   prompt: string;
 }
 
 export interface ImageGenerationResponse {
   success: boolean;
-  imageData?: string; // base64 encoded generated image
+  imageData?: string; // base64 wygenerowanego/edytowanego obrazu
   error?: string;
 }
 
+/** --- Pomocnicze --- */
+function stripDataUrl(input: string): string {
+  const m = input.match(/^data:[^;]+;base64,(.+)$/);
+  return m ? m[1] : input;
+}
+
+function extractCandidates(res: any): any[] {
+  // Różne wersje SDK zwracają różnie zagnieżdżone pola
+  return res?.response?.candidates ?? res?.candidates ?? [];
+}
+
+function extractImageBase64(res: any): string | null {
+  const candidates = extractCandidates(res);
+  if (!candidates?.length) return null;
+
+  const parts = candidates[0]?.content?.parts ?? [];
+  // Najczęstszy wariant: inlineData
+  const imgPart = parts.find(
+    (p: any) =>
+      p?.inlineData?.data &&
+      String(p?.inlineData?.mimeType || "").startsWith("image/")
+  );
+  if (imgPart) return imgPart.inlineData.data;
+
+  // Alternatywny wariant (niektóre buildy SDK)
+  const alt = parts.find(
+    (p: any) =>
+      p?.media?.[0]?.data &&
+      String(p?.media?.[0]?.mimeType || "").startsWith("image/")
+  );
+  if (alt) return alt.media[0].data;
+
+  return null;
+}
+
+function extractText(res: any): string | null {
+  // W części buildów jest dostępne skrótowe pole "text"
+  if (typeof res?.text === "string" && res.text.trim()) return res.text;
+
+  const candidates = extractCandidates(res);
+  if (!candidates?.length) return null;
+
+  const parts = candidates[0]?.content?.parts ?? [];
+  const textPart = parts.find((p: any) => typeof p?.text === "string" && p.text.trim());
+  return textPart?.text ?? null;
+}
+
+/** --- Nakładki sterujące zachowaniem modelu (wymuszenie edycji a nie generacji od zera) --- */
+const EDIT_PREFIX = [
+  "EDIT THE PROVIDED IMAGE ONLY.",
+  "Use the uploaded image as the base.",
+  "Do NOT generate a new scene from scratch.",
+  "Preserve subject identity, pose and composition unless changes are explicitly requested.",
+  "Apply only these changes:"
+].join(" ");
+
+const ANALYZE_PREFIX =
+  "Analyze ONLY the uploaded image. Describe key elements, style, colors, composition, and lighting.";
+
+/** --- Główne funkcje --- */
+
+/**
+ * Edycja/transformacja obrazu na podstawie promptu.
+ * Przekazujemy obraz + instrukcję w JEDNYM komunikacie.
+ */
 export async function generateImageWithPrompt(
   request: ImageGenerationRequest
 ): Promise<ImageGenerationResponse> {
   try {
-    if (!ai) {
-      return { success: false, error: "AI client not initialized" };
-    }
+    if (!ai) return { success: false, error: "AI client not initialized" };
     if (!request?.imageData || !request?.mimeType) {
       return { success: false, error: "Image data and mimeType are required" };
     }
@@ -31,68 +94,36 @@ export async function generateImageWithPrompt(
       return { success: false, error: "Prompt is required" };
     }
 
-    // 1) Upewnij się, że przekazujesz same base64 (bez prefiksu data URL)
-    const base64 = (() => {
-      const m = request.imageData.match(/^data:[^;]+;base64,(.+)$/);
-      return m ? m[1] : request.imageData;
-    })();
+    const base64 = stripDataUrl(request.imageData);
+    const finalPrompt = `${EDIT_PREFIX}\n${request.prompt}`;
 
-    // 2) Jedno wywołanie: model do generacji/edycji obrazów + obraz + prompt w JEDNYM 'contents'
     const imageGenResponse = await ai.models.generateContent({
-      // użyj modelu do generacji obrazów; jeśli w Twoim projekcie był:
-      // "gemini-2.0-flash-preview-image-generation", to wstaw go tutaj.
-      // Jeżeli masz pewność, że "gemini-2.5-flash-image-preview" działa u Ciebie — zostaw go.
+      // Jeśli w Twoim środowisku dostępny jest model do generacji/edycji obrazów w wersji 2.0 preview,
+      // możesz użyć: "gemini-2.0-flash-preview-image-generation".
+      // Poniżej pozostawiamy model z Twojej wersji:
       model: "gemini-2.5-flash-image-preview",
       contents: [
         {
           role: "user",
           parts: [
-            { inlineData: { data: base64, mimeType: request.mimeType } }, // obraz do edycji
-            { text: request.prompt } // instrukcja edycji
+            { inlineData: { data: base64, mimeType: request.mimeType } }, // obraz bazowy
+            { text: finalPrompt } // instrukcja edycji
           ],
         },
       ],
-      // W wielu wersjach SDK to pole nazywa się `config`.
-      // Jeśli u Ciebie jest `generationConfig`, przenieś tam te opcje.
+      // W @google/genai te opcje są w `config`. (W innych SDK bywa `generationConfig`.)
       config: {
-        // Poproś o obraz w odpowiedzi
-        responseModalities: [Modality.IMAGE],
+        responseModalities: [Modality.IMAGE], // oczekujemy obrazu
+        temperature: 0.4,                      // mniej "fantazji", lepsze trzymanie się wejścia
       },
     });
 
-    // 3) Elastyczne parsowanie odpowiedzi (różne SDK zwracają różnie zagnieżdżone pola)
-    const anyRes: any = imageGenResponse;
-    const candidates = anyRes?.response?.candidates ?? anyRes?.candidates ?? [];
-    if (!candidates?.length) {
-      return { success: false, error: "No image generated from the model" };
-    }
-
-    const parts = candidates[0]?.content?.parts ?? [];
-    const imgPart = parts.find(
-      (p: any) =>
-        p?.inlineData?.data &&
-        String(p?.inlineData?.mimeType || "").startsWith("image/")
-    );
-
-    if (!imgPart) {
-      // dodatkowa próba: niektóre SDK umieszczają obraz pod innym kluczem
-      const altImgPart = parts.find(
-        (p: any) => p?.media?.[0]?.data && String(p?.media?.[0]?.mimeType || "").startsWith("image/")
-      );
-      if (altImgPart) {
-        return {
-          success: true,
-          imageData: altImgPart.media[0].data,
-        };
-      }
-
+    const outBase64 = extractImageBase64(imageGenResponse);
+    if (!outBase64) {
       return { success: false, error: "Invalid response format" };
     }
 
-    return {
-      success: true,
-      imageData: imgPart.inlineData.data, // czyste base64 obrazu wyjściowego
-    };
+    return { success: true, imageData: outBase64 };
   } catch (error) {
     console.error("Gemini API error:", error);
     return {
@@ -102,31 +133,40 @@ export async function generateImageWithPrompt(
   }
 }
 
-
-export async function analyzeImage(imageData: string, mimeType: string): Promise<string> {
+/**
+ * Analiza obrazu (opis słowny).
+ */
+export async function analyzeImage(
+  imageData: string,
+  mimeType: string
+): Promise<string> {
   try {
+    const base64 = stripDataUrl(imageData);
+
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: [
         {
+          role: "user",
           parts: [
-            {
-              inlineData: {
-                data: imageData,
-                mimeType: mimeType,
-              },
-            },
-            {
-              text: "Analyze this image and describe its key elements, style, colors, and composition in detail.",
-            },
+            { inlineData: { data: base64, mimeType } },
+            { text: ANALYZE_PREFIX }
           ],
         },
       ],
+      config: {
+        responseModalities: [Modality.TEXT],
+        temperature: 0.2,
+      },
     });
 
-    return response.text || "Unable to analyze image";
+    return extractText(response) || "Unable to analyze image";
   } catch (error) {
     console.error("Image analysis error:", error);
-    throw new Error(`Failed to analyze image: ${error}`);
+    throw new Error(
+      `Failed to analyze image: ${
+        error instanceof Error ? error.message : String(error)
+      }`
+    );
   }
 }
