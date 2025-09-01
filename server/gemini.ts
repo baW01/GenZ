@@ -124,27 +124,32 @@ export async function generateImageWithPrompt(
     const base64 = padBase64(stripDataUrl(request.imageData));
 
     // 2) Finalny prompt kotwiczący edycję na wejściowym obrazie
-    const finalPrompt = `${EDIT_PREFIX}\n${request.prompt.trim()}`;
+    const finalPrompt = `${EDIT_PREFIX}\n${request.prompt.trim()}\nReturn an image, not text.`;
 
     // 3) Wywołanie modelu obrazowego z jednoczesnym tekstem i obrazem
     const response = await ai.models.generateContent({
-  model: DEFAULT_IMAGE_MODEL, // "gemini-2.5-flash-image-preview"
-  contents: [
-    {
-      role: "user",
-      parts: [
-        { text: `${EDIT_PREFIX}\n${request.prompt.trim()}\nReturn an image, not text.` },
-        { inlineData: { mimeType: request.mimeType, data: base64 } },
+      model: DEFAULT_IMAGE_MODEL, // "gemini-2.5-flash-image-preview"
+      contents: [
+        {
+          role: "user",
+          parts: [
+            // Obraz jako pierwszy element, aby model go uwzględniał
+            { inlineData: { mimeType: request.mimeType, data: base64 } },
+            { text: finalPrompt },
+          ],
+        },
       ],
-    },
-  ],
-  config: {
-    temperature: 0.2,
-    topP: 0.9,
-    topK: 32,
-    // maxOutputTokens nie jest wymagane dla obrazu
-  },
-});
+      config: {
+        temperature: 0.2,
+        topP: 0.9,
+        topK: 32,
+        // Wymuszony format odpowiedzi, jeśli został podany
+        ...(request.outputMimeType
+          ? { responseMimeType: request.outputMimeType }
+          : {}),
+        // maxOutputTokens nie jest wymagane dla obrazu
+      },
+    });
 
 
 
