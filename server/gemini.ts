@@ -1,5 +1,5 @@
 // gemini.ts
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, RawReferenceImage } from "@google/genai";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "",
@@ -15,6 +15,10 @@ const DEFAULT_IMAGE_MODEL =
   process.env.GEMINI_IMAGE_MODEL && IMAGE_MODELS.includes(process.env.GEMINI_IMAGE_MODEL)
     ? process.env.GEMINI_IMAGE_MODEL
     : "gemini-2.5-flash-image-preview";
+
+// Model dedykowany do edycji obrazów (Imagen 3)
+const DEFAULT_EDIT_MODEL =
+  process.env.GEMINI_EDIT_MODEL ?? "imagen-3.0-capability-001";
 
 const ALLOWED_MIME = new Set(["image/png", "image/jpeg", "image/webp"]);
 
@@ -54,34 +58,6 @@ function firstPartsArray(res: any): any[] {
   const candidates = extractCandidates(res);
   if (!candidates?.length) return [];
   return candidates[0]?.content?.parts ?? [];
-}
-
-function extractImageBase64(res: any): string | null {
-  const parts = firstPartsArray(res);
-  if (!parts.length) return null;
-
-  // Najczęstsza ścieżka w @google/genai: part.inlineData.{mimeType,data}
-  const p1 = parts.find(
-    (p: any) =>
-      p?.inlineData?.data &&
-      String(p?.inlineData?.mimeType || "").startsWith("image/")
-  );
-  if (p1) return p1.inlineData.data;
-
-  // Alternatywna ścieżka (niektóre wersje):
-  const p2 = parts.find(
-    (p: any) =>
-      p?.media?.[0]?.data &&
-      String(p?.media?.[0]?.mimeType || "").startsWith("image/")
-  );
-  if (p2) return p2.media[0].data;
-
-  // Rzadziej: fileData może wskazywać zasób – wtedy potrzebny byłby dodatkowy fetch.
-  // Tu próbujemy jeszcze znaleźć inlineData ukryte w zagnieżdżeniu:
-  const p3 = parts.find((p: any) => p?.inline_data?.data && String(p?.inline_data?.mime_type || "").startsWith("image/"));
-  if (p3) return p3.inline_data.data;
-
-  return null;
 }
 
 function extractText(res: any): string | null {
@@ -126,34 +102,23 @@ export async function generateImageWithPrompt(
     // 2) Finalny prompt kotwiczący edycję na wejściowym obrazie
     const finalPrompt = `${EDIT_PREFIX}\n${request.prompt.trim()}`;
 
-    // 3) Wywołanie modelu obrazowego z jednoczesnym tekstem i obrazem
-    const response = await ai.models.generateContent({
-  model: DEFAULT_IMAGE_MODEL, // "gemini-2.5-flash-image-preview"
-  contents: [
-    {
-      role: "user",
-      parts: [
-        { text: `${EDIT_PREFIX}\n${request.prompt.trim()}\nReturn an image, not text.` },
-        { inlineData: { mimeType: request.mimeType, data: base64 } },
-      ],
-    },
-  ],
-  config: {
-    temperature: 0.2,
-    topP: 0.9,
-    topK: 32,
-    // maxOutputTokens nie jest wymagane dla obrazu
-  },
-});
+    // 3) Przygotowanie referencyjnego obrazu dla API edycji
+    const ref = new RawReferenceImage();
+    ref.referenceImage = { imageBytes: base64, mimeType: request.mimeType };
 
+    // 4) Wywołanie API edycji obrazu (Imagen 3)
+    const response = await ai.models.editImage({
+      model: DEFAULT_EDIT_MODEL,
+      prompt: finalPrompt,
+      referenceImages: [ref],
+      config: {
+        ...(request.outputMimeType ? { outputMimeType: request.outputMimeType } : {}),
+      },
+    });
 
-
-
-    const outBase64 = extractImageBase64(response);
+    const outBase64 = response.generatedImages?.[0]?.image?.imageBytes;
     if (!outBase64) {
-      const maybeText = extractText(response);
-      const extra = maybeText ? ` (${maybeText})` : "";
-      return { success: false, error: "Model returned no image" + extra };
+      return { success: false, error: "Model returned no image" };
     }
 
     return { success: true, imageData: outBase64 };
