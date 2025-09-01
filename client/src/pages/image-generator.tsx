@@ -62,16 +62,16 @@ export default function ImageGenerator() {
       setGeneratedImageUrl(data.imageUrl);
       setProgress(0);
       toast({
-        title: "Success!",
-        description: "Your AI image has been generated successfully.",
+        title: "Sukces!",
+        description: "Twój obraz AI został pomyślnie wygenerowany.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/generations'] });
     },
     onError: (error) => {
       setProgress(0);
       toast({
-        title: "Generation Failed",
-        description: error instanceof Error ? error.message : "Please try again with a different image or prompt.",
+        title: "Generowanie nie powiodło się",
+        description: error instanceof Error ? error.message : "Spróbuj ponownie z innym obrazem lub poleceniem.",
         variant: "destructive",
       });
     },
@@ -142,11 +142,11 @@ export default function ImageGenerator() {
             <Wand2 className="text-primary text-2xl h-6 w-6" />
           </div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-blue-400 bg-clip-text text-transparent">
-            AI Image Generator
+            Chujowy Generator
           </h1>
         </div>
         <p className="text-muted-foreground text-lg max-w-2xl mx-auto">
-          Transform your images with AI using Gemini 2.5 Flash. Upload an image, describe your vision, and watch AI create something amazing.
+          Coś tam generuje ale obrazu nie pobiera c word...
         </p>
       </header>
 
@@ -158,7 +158,7 @@ export default function ImageGenerator() {
             <CardContent className="p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center" data-testid="heading-upload">
                 <Upload className="text-primary mr-2 h-5 w-5" />
-                Upload Image
+                Prześlij obraz
               </h2>
               
               <FileUpload
@@ -177,13 +177,13 @@ export default function ImageGenerator() {
             <CardContent className="p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center" data-testid="heading-prompt">
                 <Wand2 className="text-primary mr-2 h-5 w-5" />
-                Describe Your Vision
+                Opisz swoją wizję
               </h2>
               
               <div className="space-y-4">
                 <div>
                   <Textarea
-                    placeholder="Describe how you want to transform this image... (e.g., 'Make it look like a Van Gogh painting', 'Add cyberpunk neon lights', 'Transform into a cartoon style')"
+                    placeholder="Opisz, jak chcesz przekształcić ten obraz... (np. 'Spraw, aby wyglądał jak obraz Van Gogha', 'Dodaj neonowe światła cyberpunk', 'Przekształć w styl kreskówki')"
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     className="h-32 resize-none"
@@ -198,7 +198,7 @@ export default function ImageGenerator() {
                         onClick={() => insertPromptSuggestion("oil painting style")}
                         data-testid="button-prompt-oil"
                       >
-                        Oil Painting
+                        Malarstwo olejne
                       </Button>
                       <Button
                         variant="secondary"
@@ -214,7 +214,7 @@ export default function ImageGenerator() {
                         onClick={() => insertPromptSuggestion("watercolor painting")}
                         data-testid="button-prompt-watercolor"
                       >
-                        Watercolor
+                        Akwarela
                       </Button>
                     </div>
                     <span 
@@ -239,12 +239,12 @@ export default function ImageGenerator() {
                   {generateMutation.isPending ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating...
+                      Generowanie...
                     </>
                   ) : (
                     <>
                       <Wand2 className="mr-2 h-4 w-4" />
-                      Generate AI Image
+                      Generuj obraz AI
                     </>
                   )}
                 </Button>
@@ -260,7 +260,7 @@ export default function ImageGenerator() {
             <CardContent className="p-6">
               <h2 className="text-xl font-semibold mb-4 flex items-center" data-testid="heading-result">
                 <ImageIcon className="text-primary mr-2 h-5 w-5" />
-                Generated Result
+                Wynik generowania
               </h2>
               
               {/* Empty State */}
@@ -269,7 +269,7 @@ export default function ImageGenerator() {
                   <div className="bg-muted/30 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
                     <ImageIcon className="text-3xl text-muted-foreground h-8 w-8" />
                   </div>
-                  <p className="text-muted-foreground">Upload an image and enter a prompt to get started</p>
+                  <p className="text-muted-foreground">Prześlij obraz i wpisz polecenie, aby rozpocząć</p>
                 </div>
               )}
               
@@ -277,8 +277,8 @@ export default function ImageGenerator() {
               {generateMutation.isPending && (
                 <div className="text-center py-12" data-testid="state-loading">
                   <div className="w-12 h-12 border-4 border-muted border-t-primary rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-foreground font-medium">Generating your AI image...</p>
-                  <p className="text-sm text-muted-foreground mt-2">This may take 30-60 seconds</p>
+                  <p className="text-foreground font-medium">Generowanie Twojego obrazu AI...</p>
+                  <p className="text-sm text-muted-foreground mt-2">Może to potrwać 30-60 sekund</p>
                   <div className="mt-4">
                     <Progress value={progress} className="w-64 mx-auto" data-testid="progress-generation" />
                   </div>
@@ -304,16 +304,16 @@ export default function ImageGenerator() {
                       data-testid="button-download"
                     >
                       <Download className="mr-2 h-4 w-4" />
-                      Download
+                      Pobierz
                     </Button>
-                    <Button 
-                      variant="secondary" 
-                      className="flex-1" 
+                    <Button
+                      variant="secondary"
+                      className="flex-1"
                       onClick={handleNewGeneration}
                       data-testid="button-new"
                     >
                       <RotateCcw className="mr-2 h-4 w-4" />
-                      New Image
+                      Nowy obraz
                     </Button>
                   </div>
                 </div>
@@ -325,20 +325,20 @@ export default function ImageGenerator() {
                   <div className="bg-destructive/10 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-4">
                     <TriangleAlert className="text-3xl text-destructive h-8 w-8" />
                   </div>
-                  <p className="text-destructive font-medium">Generation failed</p>
+                  <p className="text-destructive font-medium">Generowanie nie powiodło się</p>
                   <p className="text-sm text-muted-foreground mt-2" data-testid="text-error-message">
-                    {generateMutation.error instanceof Error 
-                      ? generateMutation.error.message 
-                      : "Please try again with a different image or prompt"
+                    {generateMutation.error instanceof Error
+                      ? generateMutation.error.message
+                      : "Spróbuj ponownie z innym obrazem lub poleceniem"
                     }
                   </p>
-                  <Button 
-                    className="mt-4" 
+                  <Button
+                    className="mt-4"
                     onClick={handleGenerate}
                     disabled={!canGenerate}
                     data-testid="button-retry"
                   >
-                    Try Again
+                    Spróbuj ponownie
                   </Button>
                 </div>
               )}
@@ -350,14 +350,14 @@ export default function ImageGenerator() {
             <CardContent className="p-6">
               <h3 className="text-lg font-semibold mb-4 flex items-center" data-testid="heading-recent">
                 <Clock className="text-primary mr-2 h-4 w-4" />
-                Recent Generations
+                Ostatnie generacje
               </h3>
               
               <div className="text-center py-8">
                 <div className="bg-muted/30 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-3">
                   <Clock className="text-2xl text-muted-foreground h-6 w-6" />
                 </div>
-                <p className="text-muted-foreground text-sm">Your recent generations will appear here</p>
+                <p className="text-muted-foreground text-sm">Twoje ostatnie generacje pojawią się tutaj</p>
               </div>
             </CardContent>
           </Card>
@@ -367,8 +367,7 @@ export default function ImageGenerator() {
       {/* Footer */}
       <footer className="text-center mt-16 py-8 border-t border-border">
         <p className="text-muted-foreground text-sm">
-          Powered by <span className="text-primary font-medium">Gemini 2.5 Flash</span> • 
-          Built for creative professionals and AI enthusiasts
+          Stworzone w celach humorystycznych
         </p>
       </footer>
     </div>
