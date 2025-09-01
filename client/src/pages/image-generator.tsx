@@ -62,7 +62,7 @@ export default function ImageGenerator() {
       setGeneratedImageUrl(data.imageUrl);
       setProgress(0);
       toast({
-        title: "Sukces!",
+        title: "Sukcess!",
         description: "Twój obraz AI został pomyślnie wygenerowany.",
       });
       queryClient.invalidateQueries({ queryKey: ['/api/generations'] });
