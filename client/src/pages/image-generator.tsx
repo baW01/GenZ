@@ -367,8 +367,7 @@ export default function ImageGenerator() {
       {/* Footer */}
       <footer className="text-center mt-16 py-8 border-t border-border">
         <p className="text-muted-foreground text-sm">
-          Napędzane przez <span className="text-primary font-medium">Gemini 2.5 Flash</span> •
-          Stworzone dla kreatywnych profesjonalistów i entuzjastów AI
+          Stworzone w celach humorystycznych
         </p>
       </footer>
     </div>
