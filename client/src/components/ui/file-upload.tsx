@@ -53,12 +53,12 @@ export function FileUpload({
 
   const handleFileValidation = (file: File) => {
     if (maxSize && file.size > maxSize) {
-      alert(`File size must be less than ${Math.round(maxSize / (1024 * 1024))}MB`);
+      alert(`Rozmiar pliku musi być mniejszy niż ${Math.round(maxSize / (1024 * 1024))}MB`);
       return;
     }
 
     if (accept !== "*" && !file.type.match(accept.replace("*", ".*"))) {
-      alert("Please select a valid file type");
+      alert("Proszę wybrać prawidłowy typ pliku");
       return;
     }
 
@@ -96,22 +96,22 @@ export function FileUpload({
         {!selectedFile ? (
           <div data-testid="upload-content">
             <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-lg font-medium mb-2">Drag & drop your image here</p>
-            <p className="text-muted-foreground mb-4">or click to browse files</p>
+            <p className="text-lg font-medium mb-2">Przeciągnij i upuść swój obraz tutaj</p>
+            <p className="text-muted-foreground mb-4">lub kliknij, aby przeglądać pliki</p>
             <div className="flex flex-wrap justify-center gap-2 text-sm text-muted-foreground">
               <span className="bg-muted px-2 py-1 rounded">JPG</span>
               <span className="bg-muted px-2 py-1 rounded">PNG</span>
               <span className="bg-muted px-2 py-1 rounded">WebP</span>
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              Max size: {Math.round(maxSize / (1024 * 1024))}MB
+              Maksymalny rozmiar: {Math.round(maxSize / (1024 * 1024))}MB
             </p>
           </div>
         ) : (
           <div className="relative" data-testid="image-preview">
             <img
               src={URL.createObjectURL(selectedFile)}
-              alt="Uploaded image preview"
+              alt="Podgląd przesłanego obrazu"
               className="rounded-lg max-h-64 mx-auto"
               data-testid="preview-image"
             />
