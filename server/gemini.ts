@@ -1,14 +1,14 @@
 // gemini.ts
-import { GoogleGenAI, Modality } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY || "",
 });
 
 export interface ImageGenerationRequest {
-  imageData: string; // base64 lub data URL
-  mimeType: string;  // np. "image/png"
-  prompt: string;
+  imageData: string; // base64 lub data URL (data:image/png;base64,...)
+  mimeType: string;  // np. "image/png" | "image/jpeg"
+  prompt: string;    // instrukcja edycji
 }
 
 export interface ImageGenerationResponse {
@@ -32,6 +32,8 @@ function extractImageBase64(res: any): string | null {
   const candidates = extractCandidates(res);
   if (!candidates?.length) return null;
   const parts = candidates[0]?.content?.parts ?? [];
+
+  // Najczęstsza ścieżka w @google/genai: part.inlineData.{mimeType,data}
   const imgPart = parts.find(
     (p: any) =>
       p?.inlineData?.data &&
@@ -39,6 +41,7 @@ function extractImageBase64(res: any): string | null {
   );
   if (imgPart) return imgPart.inlineData.data;
 
+  // Alternatywne ścieżki (sporadyczne różnice między wersjami)
   const alt = parts.find(
     (p: any) =>
       p?.media?.[0]?.data &&
@@ -58,7 +61,7 @@ function extractText(res: any): string | null {
   return textPart?.text ?? null;
 }
 
-/* -------------------- Guardraile promptu -------------------- */
+/* -------------------- Guardraile promptu (wymuś tryb EDYCJI) -------------------- */
 
 const EDIT_PREFIX = [
   "EDIT THE PROVIDED IMAGE ONLY.",
@@ -68,68 +71,7 @@ const EDIT_PREFIX = [
   "Apply only these changes:"
 ].join(" ");
 
-const ANALYZE_BRIEF =
-  "In 1-2 concise sentences, list the most salient, objective facts about this image (subject, pose, clothing/main objects, background, lighting). No speculation.";
-
-/* -------------------- Krok 1: krótka analiza obrazu (kotwica) -------------------- */
-
-async function briefDescribeImage(imageBase64: string, mimeType: string): Promise<string> {
-  const res = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
-    contents: [{
-      role: "user",
-      parts: [
-        { inlineData: { data: imageBase64, mimeType } },
-        { text: ANALYZE_BRIEF }
-      ]
-    }],
-    config: {
-      responseModalities: [Modality.TEXT],
-      temperature: 0.1,
-      topP: 0.1,
-      topK: 16,
-    },
-  });
-  const text = extractText(res)?.trim() || "";
-  // utnij nadmiar — to ma być kotwica, nie esej
-  return text.slice(0, 500);
-}
-
-/* -------------------- Krok 2: właściwa edycja (image + instrukcja) -------------------- */
-
-type GenModel = "gemini-2.0-flash-preview-image-generation" | "gemini-2.5-flash-image-preview";
-
-async function tryGenerateWithModel(
-  model: GenModel,
-  imageBase64: string,
-  mimeType: string,
-  finalPrompt: string
-): Promise<ImageGenerationResponse> {
-  const res = await ai.models.generateContent({
-    model,
-    contents: [{
-      role: "user",
-      parts: [
-        { inlineData: { data: imageBase64, mimeType } },
-        { text: finalPrompt }
-      ],
-    }],
-    config: {
-      responseModalities: [Modality.IMAGE, Modality.TEXT], // obraz + krótki opis zmian
-      temperature: 0.2,
-      topP: 0.1,
-      topK: 16,
-    },
-  });
-
-  const outBase64 = extractImageBase64(res);
-  if (!outBase64) {
-    return { success: false, error: "Invalid response format (no image part)" };
-  }
-  return { success: true, imageData: outBase64 };
-}
-
-/* -------------------- API: edycja obrazu -------------------- */
+/* -------------------- EDYCJA OBRAZU -------------------- */
 
 export async function generateImageWithPrompt(
   request: ImageGenerationRequest
@@ -142,37 +84,41 @@ export async function generateImageWithPrompt(
       return { success: false, error: "Prompt is required" };
     }
 
+    // 1) Zadbaj o czyste base64 (bez prefiksu data URL)
     const base64 = stripDataUrl(request.imageData);
 
-    // 1) Zbuduj kotwicę z obrazu, żeby model „wiedział”, co zachować
-    let anchor = "";
-    try {
-      anchor = await briefDescribeImage(base64, request.mimeType);
-    } catch {
-      // brak kotwicy to nie błąd krytyczny — jedziemy dalej
-      anchor = "";
+    // 2) Zbuduj finalny prompt, który „kotwiczy” edycję na wejściowym obrazie
+    const finalPrompt = `${EDIT_PREFIX}\n${request.prompt}`;
+
+    // 3) Jedno wywołanie: model obrazowy + (obraz + instrukcja) w JEDNYM contents
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash-image-preview",
+      // Zgodnie z oficjalnym przykładem: przekazujemy tablicę parts z text + inlineData
+      // (JS przykład w docs dla "Image editing")
+      contents: [
+        {
+          role: "user",
+          parts: [
+            { text: finalPrompt },
+            { inlineData: { mimeType: request.mimeType, data: base64 } },
+          ],
+        },
+      ],
+      // Uwaga: w zwykłym generateContent nie trzeba wymuszać responseModalities;
+      // model sam zwróci part inlineData (obraz) oraz ewentualnie part text.
+      // Jeśli chcesz, możesz dodać lekką kontrolę kreatywności:
+      // config: { temperature: 0.2, topP: 0.1, topK: 16 },
+    });
+
+    const outBase64 = extractImageBase64(response);
+    if (!outBase64) {
+      // pokaż surowy tekst (jeśli model coś powiedział), żeby łatwiej debugować
+      const maybeText = extractText(response);
+      const extra = maybeText ? ` (${maybeText})` : "";
+      return { success: false, error: "Invalid response format" + extra };
     }
 
-    // 2) Finalny prompt: twarde zasady + rzeczy do zachowania + Twoje instrukcje
-    const preserveLine = anchor
-      ? `\nPRESERVE these factual properties of the input image: ${anchor}`
-      : "";
-    const finalPrompt = `${EDIT_PREFIX}${preserveLine}\n${request.prompt}`;
-
-    // 3) Najpierw spróbuj model image-to-image; jeśli brak/działa inaczej, fallback
-    const primaryModel: GenModel = "gemini-2.0-flash-preview-image-generation";
-    const fallbackModel: GenModel = "gemini-2.5-flash-image-preview";
-
-    try {
-      const r1 = await tryGenerateWithModel(primaryModel, base64, request.mimeType, finalPrompt);
-      if (r1.success) return r1;
-      // jeśli format nie ten — od razu spróbuj fallback
-    } catch (e) {
-      // np. model niedostępny w regionie/projekcie — spróbuj fallback
-    }
-
-    const r2 = await tryGenerateWithModel(fallbackModel, base64, request.mimeType, finalPrompt);
-    return r2;
+    return { success: true, imageData: outBase64 };
   } catch (error) {
     console.error("Gemini edit error:", error);
     return {
@@ -182,35 +128,25 @@ export async function generateImageWithPrompt(
   }
 }
 
-/* -------------------- API: analiza obrazu (opcjonalne) -------------------- */
+/* -------------------- ANALIZA OBRAZU (tekst) — opcjonalnie też tym samym modelem -------------------- */
 
 export async function analyzeImage(
   imageData: string,
   mimeType: string
 ): Promise<string> {
-  try {
-    const base64 = stripDataUrl(imageData);
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{
+  const base64 = stripDataUrl(imageData);
+  const res = await ai.models.generateContent({
+    model: "gemini-2.5-flash-image-preview",
+    contents: [
+      {
         role: "user",
         parts: [
-          { inlineData: { data: base64, mimeType } },
-          { text: "Analyze this image: subjects, pose, objects, background, colors, lighting. Be objective and concise." }
-        ]
-      }],
-      config: {
-        responseModalities: [Modality.TEXT],
-        temperature: 0.2,
-        topP: 0.1,
-        topK: 16,
+          { inlineData: { mimeType, data: base64 } },
+          { text: "Describe the image: subjects, pose/arrangement, background, colors, lighting. Be objective and concise." },
+        ],
       },
-    });
-    return extractText(response) || "Unable to analyze image";
-  } catch (error) {
-    console.error("Image analysis error:", error);
-    throw new Error(
-      `Failed to analyze image: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
+    ],
+    // config: { temperature: 0.2 },
+  });
+  return extractText(res) || "Unable to analyze image";
 }
